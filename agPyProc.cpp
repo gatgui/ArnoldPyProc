@@ -80,7 +80,7 @@ public:
     tdata->acquire();
     
     // Derive python module name
-    std::string modname = "pythonDso_";
+    std::string modname = "agPyProc_";
     size_t p0 = data->script.find_last_of("\\/");
     if (p0 != std::string::npos)
     {
@@ -98,13 +98,13 @@ public:
     
     if (data->verbose)
     {
-      AiMsgInfo("[pythonDso] Resolved script path \"%s\"", data->script.c_str());
+      AiMsgInfo("[agPyProc] Resolved script path \"%s\"", data->script.c_str());
     }
     
     PyObject *pyimp = PyImport_ImportModule("imp");
     if (pyimp == NULL)
     {
-      AiMsgError("[pythonDso] Could not import imp module");
+      AiMsgError("[agPyProc] Could not import imp module");
       PyErr_Print();
       PyErr_Clear();
       tdata->rv = 0;
@@ -115,7 +115,7 @@ public:
     PyObject *pyload = PyObject_GetAttrString(pyimp, "load_source");
     if (pyload == NULL)
     {
-      AiMsgError("[pythonDso] No \"load_source\" function in imp module");
+      AiMsgError("[agPyProc] No \"load_source\" function in imp module");
       PyErr_Print();
       PyErr_Clear();
       Py_DECREF(pyimp);
@@ -126,14 +126,14 @@ public:
     
     if (data->verbose)
     {
-      AiMsgInfo("[pythonDso] Loading procedural module");
+      AiMsgInfo("[agPyProc] Loading procedural module");
     }
     
     data->module = PyObject_CallFunction(pyload, (char*)"ss", modname.c_str(), data->script.c_str());
     
     if (data->module == NULL)
     {
-      AiMsgError("[pythonDso] Failed to import procedural python module");
+      AiMsgError("[agPyProc] Failed to import procedural python module");
       PyErr_Print();
       PyErr_Clear();
       Py_DECREF(pyload);
@@ -159,7 +159,7 @@ public:
           tdata->rv = PyInt_AsLong(PyTuple_GetItem(rv, 0));
           if (tdata->rv == -1 && PyErr_Occurred() != NULL)
           {
-            AiMsgError("[pythonDso] Invalid return value for \"Init\" function in module \"%s\"", data->script.c_str());
+            AiMsgError("[agPyProc] Invalid return value for \"Init\" function in module \"%s\"", data->script.c_str());
             PyErr_Print();
             PyErr_Clear();
             tdata->rv = 0;
@@ -167,7 +167,7 @@ public:
         }
         else
         {
-          AiMsgError("[pythonDso] Invalid return value for \"Init\" function in module \"%s\"", data->script.c_str());
+          AiMsgError("[agPyProc] Invalid return value for \"Init\" function in module \"%s\"", data->script.c_str());
           tdata->rv = 0;
         }
         
@@ -175,7 +175,7 @@ public:
       }
       else
       {
-        AiMsgError("[pythonDso] \"Init\" function failed in module \"%s\"", data->script.c_str());
+        AiMsgError("[agPyProc] \"Init\" function failed in module \"%s\"", data->script.c_str());
         PyErr_Print();
         PyErr_Clear();
         tdata->rv = 0;
@@ -185,7 +185,7 @@ public:
     }
     else
     {
-      AiMsgError("[pythonDso] No \"Init\" function in module \"%s\"", data->script.c_str());
+      AiMsgError("[agPyProc] No \"Init\" function in module \"%s\"", data->script.c_str());
       tdata->rv = 0;
     }
     
@@ -215,7 +215,7 @@ public:
         tdata->rv = PyInt_AsLong(rv);
         if (tdata->rv == -1 && PyErr_Occurred() != NULL)
         {
-          AiMsgError("[pythonDso] Invalid return value for \"Cleanup\" function in module \"%s\"", data->script.c_str());
+          AiMsgError("[agPyProc] Invalid return value for \"Cleanup\" function in module \"%s\"", data->script.c_str());
           PyErr_Print();
           PyErr_Clear();
           tdata->rv = 0;
@@ -224,7 +224,7 @@ public:
       }
       else
       {
-        AiMsgError("[pythonDso] \"Cleanup\" function failed in module \"%s\"", data->script.c_str());
+        AiMsgError("[agPyProc] \"Cleanup\" function failed in module \"%s\"", data->script.c_str());
         PyErr_Print();
         PyErr_Clear();
         tdata->rv = 0;
@@ -234,7 +234,7 @@ public:
     }
     else
     {
-      AiMsgError("[pythonDso] No \"Cleanup\" function in module \"%s\"", data->script.c_str());
+      AiMsgError("[agPyProc] No \"Cleanup\" function in module \"%s\"", data->script.c_str());
       tdata->rv = 0;
     }
     
@@ -264,7 +264,7 @@ public:
         tdata->rv = PyInt_AsLong(rv);
         if (tdata->rv == -1 && PyErr_Occurred() != NULL)
         {
-          AiMsgError("[pythonDso] Invalid return value for \"NumNodes\" function in module \"%s\"", data->script.c_str());
+          AiMsgError("[agPyProc] Invalid return value for \"NumNodes\" function in module \"%s\"", data->script.c_str());
           PyErr_Print();
           PyErr_Clear();
           tdata->rv = 0;
@@ -273,7 +273,7 @@ public:
       }
       else
       {
-        AiMsgError("[pythonDso] \"NumNodes\" function failed in module \"%s\"", data->script.c_str());
+        AiMsgError("[agPyProc] \"NumNodes\" function failed in module \"%s\"", data->script.c_str());
         PyErr_Print();
         PyErr_Clear();
         tdata->rv = 0;
@@ -283,7 +283,7 @@ public:
     }
     else
     {
-      AiMsgError("[pythonDso] No \"NumNodes\" function in module \"%s\"", data->script.c_str());
+      AiMsgError("[agPyProc] No \"NumNodes\" function in module \"%s\"", data->script.c_str());
       tdata->rv = 0;
     }
     
@@ -309,21 +309,21 @@ public:
       {
         if (!PyString_Check(rv))
         {
-          AiMsgError("[pythonDso] Invalid return value for \"GetNode\" function in module \"%s\"", data->script.c_str());
+          AiMsgError("[agPyProc] Invalid return value for \"GetNode\" function in module \"%s\"", data->script.c_str());
         }
         
         const char *nodeName = PyString_AsString(rv);
         tdata->node = AiNodeLookUpByName(nodeName);
         if (tdata->node == NULL)
         {
-          AiMsgError("[pythonDso] Invalid node name \"%s\" return by \"GetNode\" function in modulde \"%s\"", nodeName, data->script.c_str());
+          AiMsgError("[agPyProc] Invalid node name \"%s\" return by \"GetNode\" function in modulde \"%s\"", nodeName, data->script.c_str());
         }
         
         Py_DECREF(rv);
       }
       else
       {
-        AiMsgError("[pythonDso] \"GetNode\" function failed in module \"%s\"", data->script.c_str());
+        AiMsgError("[agPyProc] \"GetNode\" function failed in module \"%s\"", data->script.c_str());
         PyErr_Print();
         PyErr_Clear();
         tdata->node = 0;
@@ -333,7 +333,7 @@ public:
     }
     else
     {
-      AiMsgError("[pythonDso] No \"GetNode\" function in module \"%s\"", data->script.c_str());
+      AiMsgError("[agPyProc] No \"GetNode\" function in module \"%s\"", data->script.c_str());
       tdata->node = 0;
     }
     
@@ -369,25 +369,25 @@ private:
   
     if (initialized)
     {
-      AiMsgInfo("[pythonDso] Python already initialized");
+      AiMsgInfo("[agPyProc] Python already initialized");
       mInitialized = false;
     }
     else
     {
-      AiMsgInfo("[pythonDso] Initializing python");
-      Py_SetProgramName((char*)"pythonDso");
+      AiMsgInfo("[agPyProc] Initializing python");
+      Py_SetProgramName((char*)"agPyProc");
       Py_Initialize();
       mInitialized = true; 
     }
     
     if (PyEval_ThreadsInitialized() != 0)
     {
-      AiMsgInfo("[pythonDso] Re-initialize python threads");
+      AiMsgInfo("[agPyProc] Re-initialize python threads");
       PyEval_ReInitThreads();
     }
     else
     {
-      AiMsgInfo("[pythonDso] Initialize python threads");
+      AiMsgInfo("[agPyProc] Initialize python threads");
       PyEval_InitThreads();
     }
     
@@ -406,7 +406,7 @@ private:
     {
       if (mInitialized)
       {
-        AiMsgInfo("[pythonDso] Finalize python");
+        AiMsgInfo("[agPyProc] Finalize python");
         PyEval_AcquireLock();
         PyThreadState_Swap(mMainState);
         Py_Finalize();
@@ -576,7 +576,7 @@ int PyDSOInit(AtNode *node, void **user_ptr)
   {
     if (verbose)
     {
-      AiMsgInfo("[pythonDso] Search python procedural in options.procedural_searchpath...");
+      AiMsgInfo("[agPyProc] Search python procedural in options.procedural_searchpath...");
     }
     // look in procedural search path
     AtNode *opts = AiUniverseGetOptions();
@@ -696,12 +696,12 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID reserved)
 
 #else
 
-__attribute__((constructor)) void _pythonDsoLoad(void)
+__attribute__((constructor)) void _agPyProcLoad(void)
 {
   PythonInterpreter::Get();
 }
 
-__attribute__((destructor)) void _pythonDsoUnload(void)
+__attribute__((destructor)) void _agPyProcUnload(void)
 {
   PythonInterpreter::Finish();
 }
