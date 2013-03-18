@@ -1,0 +1,11 @@
+syntax: glob
+*.dblite
+*.so
+*.dylib
+*.dll
+*.lib
+*.obj
+*.os
+*.o
+*.exp
+*.pdb
