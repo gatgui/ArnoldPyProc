@@ -3,6 +3,7 @@ import arnold
 def Init(procName):
    proc = arnold.AiNodeLookUpByName(procName)
    if not proc:
+      print("No such procedural: %s" % procName)
       return (0, None)
 
    attrs = {}

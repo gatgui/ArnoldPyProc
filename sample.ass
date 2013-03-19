@@ -41,6 +41,8 @@ procedural
    name "proc1"
    dso "agPyProc.so"
    data "sample.py"
+   declare verbose constant BOOL
+   verbose on
    declare type constant STRING
    type "sphere"
    declare radius constant FLOAT
