@@ -48,6 +48,23 @@ public:
       PyGILState_Release(gil);
     }
     
+    void fixSysPath()
+    {
+      // This code was originally using sys.prefix
+      // But on windows, sys.prefix doesn't necessarily matches the directory of 
+      //   the actually used python DLL
+      // What we want here is to be sure to use the binary modules shipped with
+      //   the python DLL in use
+      static const char *scr = "import sys, os;\n\
+if sys.platform == \"win32\":\n\
+  dlls = os.path.join(os.path.split(os.path.dirname(os.__file__))[0], \"DLLs\")\n\
+  if dlls in sys.path:\n\
+    sys.path.remove(dlls)\n\
+  sys.path.insert(0, dlls)\n";
+       
+      PyRun_SimpleString(scr);
+    }
+
     void acquire()
     {
       if (istate)
@@ -55,6 +72,7 @@ public:
         tstate = PyThreadState_New(istate);
         PyEval_AcquireLock();
         ostate = PyThreadState_Swap(tstate);
+        fixSysPath();
       }
     }
     
