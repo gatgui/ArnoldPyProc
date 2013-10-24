@@ -1,18 +1,7 @@
 syntax: glob
-*.dblite
-*.pyc
-*.so
-*.dylib
-*.dll
-*.lib
-*.obj
-*.os
-*.o
-*.exp
-*.exr
-*.pdb
-*.manifest
 release
 debug
 .build
-
+*.dblite
+*.pyc
+*.exr
