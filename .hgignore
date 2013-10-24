@@ -9,4 +9,10 @@ syntax: glob
 *.os
 *.o
 *.exp
+*.exr
 *.pdb
+*.manifest
+release
+debug
+.build
+

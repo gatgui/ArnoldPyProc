@@ -365,7 +365,7 @@ private:
     : mInitialized(false)
     , mRunning(false)
   {
-    bool initialized = Py_IsInitialized();
+    bool initialized = (Py_IsInitialized() != 0);
   
     if (initialized)
     {
@@ -380,12 +380,7 @@ private:
       mInitialized = true; 
     }
     
-    if (PyEval_ThreadsInitialized() != 0)
-    {
-      AiMsgInfo("[agPyProc] Re-initialize python threads");
-      PyEval_ReInitThreads();
-    }
-    else
+    if (PyEval_ThreadsInitialized() == 0)
     {
       AiMsgInfo("[agPyProc] Initialize python threads");
       PyEval_InitThreads();
@@ -393,10 +388,14 @@ private:
     
     mMainState = PyThreadState_Swap(NULL);
     
-    PyEval_ReleaseLock();
+    if (mInitialized)
+    {
+      // If python was initialize in this function, need to release GIL
+      PyEval_ReleaseLock();
+    }
     
     mRunning = true;
-    
+
     msInstance = this;
   }
   
@@ -503,7 +502,7 @@ bool FindInPath(const std::string &procpath, const std::string &script, std::str
   {
     path = procpath.substr(p0, p1-p0);
     
-    if (path.length() >= 0)
+    if (path.length() > 0)
     {
       if (path[0] == '[' && path[path.length()-1] == ']')
       {
