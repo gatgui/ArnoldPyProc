@@ -11,7 +11,7 @@ prjs = [
    "type": "dynamicmodule",
    "ext": arnold.PluginExt(),
    "srcs": ["agPyProc.cpp"],
-   "custom": [arnold.Require, python.Require]
+   "custom": [arnold.Require, python.BuildModule]
   }
 ]
 
