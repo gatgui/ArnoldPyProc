@@ -567,6 +567,7 @@ int PyDSOInit(AtNode *node, void **user_ptr)
   PythonInterpreter &py = PythonInterpreter::Get();
   if (!py.isRunning())
   {
+    AiMsgWarning("[agPyProc] Python not running");
     return 0;
   }
   
@@ -599,11 +600,13 @@ int PyDSOInit(AtNode *node, void **user_ptr)
     AtNode *opts = AiUniverseGetOptions();
     if (!opts)
     {
+      AiMsgWarning("[agPyProc] No 'options' node");
       return 0;
     }
     std::string procpath = AiNodeGetStr(opts, "procedural_searchpath");
     if (!FindInPath(procpath, script, data->script))
     {
+      AiMsgWarning("[agPyProc] Python procedural '%s' not found in path", script.c_str());
       return 0;
     }
   }
