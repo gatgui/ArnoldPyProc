@@ -463,6 +463,7 @@ private:
       AiMsgInfo("[agPyProc] Initializing python");
       Py_SetProgramName((char*)"agPyProc");
       Py_Initialize();
+      PyEval_InitThreads();
       mInitialized = true; 
     }
     
