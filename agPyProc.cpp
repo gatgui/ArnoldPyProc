@@ -379,10 +379,78 @@ if sys.platform == \"win32\":\n\
   
 private:
   
+  static void PrintPath(const char *p)
+  {
+    #ifdef _WIN32
+    int sep = ';';
+    #else
+    int sep = ':';
+    #endif
+    
+    if (!p)
+    {
+      return;
+    }
+    
+    std::string tmp = p;
+    
+    size_t p0 = 0;
+    size_t p1 = tmp.find(sep, p0);
+    
+    while (p1 != std::string::npos)
+    {
+      std::string path = tmp.substr(p0, p1-p0);
+      if (path.length() > 0)
+      {
+        AiMsgInfo("[agPyProc]   %s", path.c_str());
+      }
+      p0 = p1 + 1;
+      p1 = tmp.find(sep, p0);
+    }
+    
+    std::string path = tmp.substr(p0);
+    if (path.length() > 0)
+    {
+      AiMsgInfo("[agPyProc]   %s", path.c_str());
+    }
+  }
+  
+  // ---
+  
   PythonInterpreter()
     : mInitialized(false)
     , mRunning(false)
   {
+    char *pyproc_debug = getenv("AGPYPROC_DEBUG");
+    int debug = 0;
+    
+    if (pyproc_debug && sscanf(pyproc_debug, "%d", &debug) == 1 && debug != 0)
+    {
+      #ifdef _WIN32
+      char *libpath = getenv("PATH");
+      #else
+      #ifdef __APPLE__
+      // This is not DYLD_LIBRARY_PATH, on OSX Python is used as a framework
+      char *libpath = 0;
+      #else
+      char *libpath = getenv("LD_LIBRARY_PATH");
+      #endif
+      #endif
+      
+      if (libpath)
+      {
+        AiMsgInfo("[agPyProc] LIBPATH:");
+        PrintPath(libpath);
+      }
+      
+      char *pypath = getenv("PYTHONPATH");
+      if (pypath)
+      {
+        AiMsgInfo("[agPyProc] PYTHONPATH:");
+        PrintPath(pypath);
+      }
+    }
+    
     bool initialized = (Py_IsInitialized() != 0);
   
     if (initialized)
