@@ -497,6 +497,11 @@ private:
         PyThreadState_Swap(mMainState);
         Py_Finalize();
       }
+      else
+      {
+        AiMsgInfo("[agPyProc] Swap back to main thread state");
+        PyThreadState_Swap(mMainState);
+      }
       mRunning = false;
     }
     
