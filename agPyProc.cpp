@@ -119,7 +119,7 @@ private:
       
       PyGILState_STATE gil = PyGILState_Ensure();
       
-      fixSysPath();
+      setup();
       
       PyGILState_Release(gil);
     }
@@ -133,7 +133,7 @@ private:
       
       PyEval_InitThreads();
       
-      fixSysPath();
+      setup();
       
       mMainState = PyEval_SaveThread();
     }
@@ -170,7 +170,7 @@ private:
     // What we want here is to be sure to use the binary modules shipped with
     //   the python DLL in use
     static const char *scr = "import sys, os\n\
-sys.dont_write_bytecode = True\n
+sys.dont_write_bytecode = True\n\
 if sys.platform == \"win32\":\n\
   dlls = os.path.join(os.path.split(os.path.dirname(os.__file__))[0], \"DLLs\")\n\
   if dlls in sys.path:\n\
