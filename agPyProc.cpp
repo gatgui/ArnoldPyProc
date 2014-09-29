@@ -7,360 +7,11 @@
 
 // ---
 
-struct ProcData
-{
-  std::string procName;
-  std::string script;
-  PyObject *module;
-  PyObject *userPtr;
-  bool verbose;
-};
-
-// ---
-
 class PythonInterpreter
 {
 public:
   
-  struct ThreadData
-  {
-    PyInterpreterState *istate;
-    ProcData *pdata;
-    int i;
-    AtNode *node;
-    int rv;
-    PyThreadState *ostate;
-    PyThreadState *tstate;
-    
-    
-    ThreadData(ProcData *_pdata,
-               int _i)
-      : pdata(_pdata)
-      , i(_i)
-      , node(NULL)
-      , rv(-1)
-      , ostate(NULL)
-      , tstate(NULL)
-    {
-      PyGILState_STATE gil = PyGILState_Ensure();
-      PyThreadState *tstate = PyGILState_GetThisThreadState();
-      istate = tstate->interp;
-      PyGILState_Release(gil);
-    }
-    
-    void fixSysPath()
-    {
-      // This code was originally using sys.prefix
-      // But on windows, sys.prefix doesn't necessarily matches the directory of 
-      //   the actually used python DLL
-      // What we want here is to be sure to use the binary modules shipped with
-      //   the python DLL in use
-      static const char *scr = "import sys, os;\n\
-if sys.platform == \"win32\":\n\
-  dlls = os.path.join(os.path.split(os.path.dirname(os.__file__))[0], \"DLLs\")\n\
-  if dlls in sys.path:\n\
-    sys.path.remove(dlls)\n\
-  sys.path.insert(0, dlls)\n";
-       
-      PyRun_SimpleString(scr);
-    }
-
-    void acquire()
-    {
-      if (istate)
-      {
-        tstate = PyThreadState_New(istate);
-        PyEval_AcquireLock();
-        ostate = PyThreadState_Swap(tstate);
-        fixSysPath();
-      }
-    }
-    
-    void release()
-    {
-      if (tstate)
-      {
-        PyThreadState_Swap(ostate);
-        PyEval_ReleaseLock();
-        PyThreadState_Clear(tstate);
-        PyThreadState_Delete(tstate);
-        tstate = NULL;
-        ostate = NULL;
-      }
-    }
-  };
-  
-  static unsigned int InitFunc(void *threadData)
-  {
-    ThreadData *tdata = (ThreadData*) threadData;
-    ProcData *data = tdata->pdata;
-    
-    tdata->acquire();
-    
-    // Derive python module name
-    std::string modname = "agPyProc_";
-    size_t p0 = data->script.find_last_of("\\/");
-    if (p0 != std::string::npos)
-    {
-      modname += data->script.substr(p0+1);
-    }
-    else
-    {
-      modname += data->script;
-    }
-    p0 = modname.find('.');
-    if (p0 != std::string::npos)
-    {
-      modname = modname.substr(0, p0);
-    }
-    
-    if (data->verbose)
-    {
-      AiMsgInfo("[agPyProc] Resolved script path \"%s\"", data->script.c_str());
-    }
-    
-    PyObject *pyimp = PyImport_ImportModule("imp");
-    if (pyimp == NULL)
-    {
-      AiMsgError("[agPyProc] Could not import imp module");
-      PyErr_Print();
-      PyErr_Clear();
-      tdata->rv = 0;
-      tdata->release();
-      return 0;
-    }
-    
-    PyObject *pyload = PyObject_GetAttrString(pyimp, "load_source");
-    if (pyload == NULL)
-    {
-      AiMsgError("[agPyProc] No \"load_source\" function in imp module");
-      PyErr_Print();
-      PyErr_Clear();
-      Py_DECREF(pyimp);
-      tdata->rv = 0;
-      tdata->release();
-      return 0;
-    }
-    
-    if (data->verbose)
-    {
-      AiMsgInfo("[agPyProc] Loading procedural module");
-    }
-    
-    data->module = PyObject_CallFunction(pyload, (char*)"ss", modname.c_str(), data->script.c_str());
-    
-    if (data->module == NULL)
-    {
-      AiMsgError("[agPyProc] Failed to import procedural python module");
-      PyErr_Print();
-      PyErr_Clear();
-      Py_DECREF(pyload);
-      Py_DECREF(pyimp);
-      tdata->rv = 0;
-      tdata->release();
-      return 0;
-    }
-    
-    PyObject *func = PyObject_GetAttrString(data->module, "Init");
-    
-    if (func)
-    {
-      PyObject *rv = PyObject_CallFunction(func, (char*)"s", data->procName.c_str());
-      
-      if (rv)
-      {
-        if (PyTuple_Check(rv) && PyTuple_Size(rv) == 2)
-        {
-          data->userPtr = PyTuple_GetItem(rv, 1);
-          Py_INCREF(data->userPtr);
-          
-          tdata->rv = PyInt_AsLong(PyTuple_GetItem(rv, 0));
-          if (tdata->rv == -1 && PyErr_Occurred() != NULL)
-          {
-            AiMsgError("[agPyProc] Invalid return value for \"Init\" function in module \"%s\"", data->script.c_str());
-            PyErr_Print();
-            PyErr_Clear();
-            tdata->rv = 0;
-          }
-        }
-        else
-        {
-          AiMsgError("[agPyProc] Invalid return value for \"Init\" function in module \"%s\"", data->script.c_str());
-          tdata->rv = 0;
-        }
-        
-        Py_DECREF(rv);
-      }
-      else
-      {
-        AiMsgError("[agPyProc] \"Init\" function failed in module \"%s\"", data->script.c_str());
-        PyErr_Print();
-        PyErr_Clear();
-        tdata->rv = 0;
-      }
-      
-      Py_DECREF(func);
-    }
-    else
-    {
-      AiMsgError("[agPyProc] No \"Init\" function in module \"%s\"", data->script.c_str());
-      tdata->rv = 0;
-    }
-    
-    Py_DECREF(pyload);
-    Py_DECREF(pyimp);
-    
-    tdata->release();
-    
-    return 0;
-  }
-  
-  static unsigned int CleanupFunc(void *threadData)
-  {
-    ThreadData *tdata = (ThreadData*) threadData;
-    ProcData *data = tdata->pdata;
-    
-    tdata->acquire();
-    
-    PyObject *func = PyObject_GetAttrString(data->module, "Cleanup");
-    
-    if (func)
-    {
-      PyObject *rv = PyObject_CallFunction(func, (char*)"O", data->userPtr);
-      
-      if (rv)
-      {
-        tdata->rv = PyInt_AsLong(rv);
-        if (tdata->rv == -1 && PyErr_Occurred() != NULL)
-        {
-          AiMsgError("[agPyProc] Invalid return value for \"Cleanup\" function in module \"%s\"", data->script.c_str());
-          PyErr_Print();
-          PyErr_Clear();
-          tdata->rv = 0;
-        }
-        Py_DECREF(rv);
-      }
-      else
-      {
-        AiMsgError("[agPyProc] \"Cleanup\" function failed in module \"%s\"", data->script.c_str());
-        PyErr_Print();
-        PyErr_Clear();
-        tdata->rv = 0;
-      }
-      
-      Py_DECREF(func);
-    }
-    else
-    {
-      AiMsgError("[agPyProc] No \"Cleanup\" function in module \"%s\"", data->script.c_str());
-      tdata->rv = 0;
-    }
-    
-    Py_DECREF(data->userPtr);
-    Py_DECREF(data->module);
-    
-    tdata->release();
-    
-    return 0;
-  }
-  
-  static unsigned int NumNodesFunc(void *threadData)
-  {
-    ThreadData *tdata = (ThreadData*) threadData;
-    ProcData *data = tdata->pdata;
-    
-    tdata->acquire();
-    
-    PyObject *func = PyObject_GetAttrString(data->module, "NumNodes");
-    
-    if (func)
-    {
-      PyObject *rv = PyObject_CallFunction(func, (char*)"O", data->userPtr);
-      
-      if (rv)
-      {
-        tdata->rv = PyInt_AsLong(rv);
-        if (tdata->rv == -1 && PyErr_Occurred() != NULL)
-        {
-          AiMsgError("[agPyProc] Invalid return value for \"NumNodes\" function in module \"%s\"", data->script.c_str());
-          PyErr_Print();
-          PyErr_Clear();
-          tdata->rv = 0;
-        }
-        Py_DECREF(rv);
-      }
-      else
-      {
-        AiMsgError("[agPyProc] \"NumNodes\" function failed in module \"%s\"", data->script.c_str());
-        PyErr_Print();
-        PyErr_Clear();
-        tdata->rv = 0;
-      }
-      
-      Py_DECREF(func);
-    }
-    else
-    {
-      AiMsgError("[agPyProc] No \"NumNodes\" function in module \"%s\"", data->script.c_str());
-      tdata->rv = 0;
-    }
-    
-    tdata->release();
-    
-    return 0;
-  }
-  
-  static unsigned int GetNodeFunc(void *threadData)
-  {
-    ThreadData *tdata = (ThreadData*) threadData;
-    ProcData *data = tdata->pdata;
-    
-    tdata->acquire();
-    
-    PyObject *func = PyObject_GetAttrString(data->module, "GetNode");
-    
-    if (func)
-    {
-      PyObject *rv = PyObject_CallFunction(func, (char*)"Oi", data->userPtr, tdata->i);
-      
-      if (rv)
-      {
-        if (!PyString_Check(rv))
-        {
-          AiMsgError("[agPyProc] Invalid return value for \"GetNode\" function in module \"%s\"", data->script.c_str());
-        }
-        
-        const char *nodeName = PyString_AsString(rv);
-        tdata->node = AiNodeLookUpByName(nodeName);
-        if (tdata->node == NULL)
-        {
-          AiMsgError("[agPyProc] Invalid node name \"%s\" return by \"GetNode\" function in modulde \"%s\"", nodeName, data->script.c_str());
-        }
-        
-        Py_DECREF(rv);
-      }
-      else
-      {
-        AiMsgError("[agPyProc] \"GetNode\" function failed in module \"%s\"", data->script.c_str());
-        PyErr_Print();
-        PyErr_Clear();
-        tdata->node = 0;
-      }
-      
-      Py_DECREF(func);
-    }
-    else
-    {
-      AiMsgError("[agPyProc] No \"GetNode\" function in module \"%s\"", data->script.c_str());
-      tdata->node = 0;
-    }
-    
-    tdata->release();
-    
-    return 0;
-  }
-  
-  static PythonInterpreter& Get()
+  static PythonInterpreter& Begin()
   {
     if (!msInstance)
     {
@@ -369,11 +20,12 @@ if sys.platform == \"win32\":\n\
     return *msInstance;
   }
   
-  static void Finish()
+  static void End()
   {
     if (msInstance)
     {
       delete msInstance;
+      msInstance = 0;
     }
   }
   
@@ -415,10 +67,10 @@ private:
     }
   }
   
-  // ---
+private:
   
   PythonInterpreter()
-    : mInitialized(false)
+    : mMainState(0)
     , mRunning(false)
   {
     char *pyproc_debug = getenv("AGPYPROC_DEBUG");
@@ -451,34 +103,39 @@ private:
       }
     }
     
-    bool initialized = (Py_IsInitialized() != 0);
-  
-    if (initialized)
+    if (Py_IsInitialized() != 0)
     {
       AiMsgInfo("[agPyProc] Python already initialized");
-      mInitialized = false;
+      
+      if (PyEval_ThreadsInitialized() == 0)
+      {
+        AiMsgInfo("[agPyProc] Initialize python threads");
+        
+        PyEval_InitThreads();
+        
+        PyThreadState_Swap(PyGILState_GetThisThreadState());
+        PyEval_SaveThread();
+      }
+      
+      PyGILState_STATE gil = PyGILState_Ensure();
+      
+      fixSysPath();
+      
+      PyGILState_Release(gil);
     }
     else
     {
       AiMsgInfo("[agPyProc] Initializing python");
+      
       Py_SetProgramName((char*)"agPyProc");
+      
       Py_Initialize();
+      
       PyEval_InitThreads();
-      mInitialized = true; 
-    }
-    
-    if (PyEval_ThreadsInitialized() == 0)
-    {
-      AiMsgInfo("[agPyProc] Initialize python threads");
-      PyEval_InitThreads();
-    }
-    
-    mMainState = PyThreadState_Swap(NULL);
-    
-    if (mInitialized)
-    {
-      // If python was initialize in this function, need to release GIL
-      PyEval_ReleaseLock();
+      
+      fixSysPath();
+      
+      mMainState = PyEval_SaveThread();
     }
     
     mRunning = true;
@@ -490,85 +147,50 @@ private:
   {
     if (mRunning)
     {
-      if (mInitialized)
+      if (mMainState)
       {
         AiMsgInfo("[agPyProc] Finalize python");
-        PyEval_AcquireLock();
-        PyThreadState_Swap(mMainState);
+        
+        PyEval_RestoreThread(mMainState);
+        
         Py_Finalize();
       }
-      else
-      {
-        AiMsgInfo("[agPyProc] Swap back to main thread state");
-        PyThreadState_Swap(mMainState);
-      }
+      
       mRunning = false;
     }
     
     msInstance = NULL;
   }
   
-public:
-  
-  bool wasInitialized() const
+  void fixSysPath()
   {
-    return !mInitialized;
+    // This code was originally using sys.prefix
+    // But on windows, sys.prefix doesn't necessarily matches the directory of 
+    //   the actually used python DLL
+    // What we want here is to be sure to use the binary modules shipped with
+    //   the python DLL in use
+    static const char *scr = "import sys, os;\n\
+if sys.platform == \"win32\":\n\
+  dlls = os.path.join(os.path.split(os.path.dirname(os.__file__))[0], \"DLLs\")\n\
+  if dlls in sys.path:\n\
+    sys.path.remove(dlls)\n\
+  sys.path.insert(0, dlls)\n";
+       
+    PyRun_SimpleString(scr);
   }
+  
+public:
   
   bool isRunning() const
   {
     return mRunning;
   }
   
-  int procInit(ProcData *pdata)
-  {
-    ThreadData data(pdata, -1);
-    
-    void *thr = AiThreadCreate(InitFunc, &data, AI_PRIORITY_HIGH);
-    AiThreadWait(thr);
-    AiThreadClose(thr);
-    
-    return data.rv;
-  }
-  
-  int procCleanup(ProcData *pdata)
-  {
-    ThreadData data(pdata, -1);
-    
-    void *thr = AiThreadCreate(CleanupFunc, &data, AI_PRIORITY_HIGH);
-    AiThreadWait(thr);
-    AiThreadClose(thr);
-    
-    return data.rv;
-  }
-  
-  int procNumNodes(ProcData *pdata)
-  {
-    ThreadData data(pdata, -1);
-    
-    void *thr = AiThreadCreate(NumNodesFunc, &data, AI_PRIORITY_HIGH);
-    AiThreadWait(thr);
-    AiThreadClose(thr);
-    
-    return data.rv;
-  }
-  
-  AtNode* procGetNode(ProcData *pdata, int i)
-  {
-    ThreadData data(pdata, i);
-    
-    void *thr = AiThreadCreate(GetNodeFunc, &data, AI_PRIORITY_HIGH);
-    AiThreadWait(thr);
-    AiThreadClose(thr);
-    
-    return data.node;
-  }
-  
 private:
   
-  bool mInitialized;
-  bool mRunning;
   PyThreadState *mMainState;
+  bool mRunning;
+  
   static PythonInterpreter *msInstance;
 };
 
@@ -576,181 +198,497 @@ PythonInterpreter* PythonInterpreter::msInstance = NULL;
 
 // ---
 
-bool FindInPath(const std::string &procpath, const std::string &script, std::string &path)
+class PythonDso
 {
-#ifdef _WIN32
-  char sep = ';';
-#else
-  char sep = ':';
-#endif
+public:
   
-  struct stat st;
-  bool found = false;
-
-  size_t p0 = 0;
-  size_t p1 = procpath.find(sep, p0);
-
-  while (!found && p1 != std::string::npos)
+  PythonDso(AtNode *node)
+    : mProcName("")
+    , mScript("")
+    , mModule(0)
+    , mUserData(0)
+    , mVerbose(false)
   {
-    path = procpath.substr(p0, p1-p0);
-    
-    if (path.length() > 0)
+    if (AiNodeLookUpUserParameter(node, "verbose") != NULL)
     {
-      if (path[0] == '[' && path[path.length()-1] == ']')
+      mVerbose = AiNodeGetBool(node, "verbose");
+    }
+    
+    mProcName = AiNodeGetStr(node, "name");
+    
+    std::string script = AiNodeGetStr(node, "data");
+    
+    struct stat st;
+    
+    if ((stat(script.c_str(), &st) != 0) || ((st.st_mode & S_IFREG) == 0))
+    {
+      if (mVerbose)
       {
-        char *env = getenv(path.substr(1, path.length()-2).c_str());
-        if (env) found = FindInPath(env, script, path);
+        AiMsgInfo("[agPyProc] Search python procedural in options.procedural_searchpath...");
+      }
+      
+      // look in procedural search path
+      AtNode *opts = AiUniverseGetOptions();
+      
+      if (!opts)
+      {
+        AiMsgWarning("[agPyProc] No 'options' node");
       }
       else
       {
-        path += "/" + script;
-        found = ((stat(path.c_str(), &st) == 0) && ((st.st_mode & S_IFREG) != 0));
+        std::string procpath = AiNodeGetStr(opts, "procedural_searchpath");
+        
+        if (!findInPath(procpath, script, mScript))
+        {
+          AiMsgWarning("[agPyProc] Python procedural '%s' not found in path", script.c_str());
+          mScript = "";
+        }
       }
     }
+    else
+    {
+      mScript = script;
+    }
     
-    p0 = p1 + 1;
-    p1 = procpath.find(sep, p0);
+    if (mScript.length() > 0)
+    {
+      size_t p0, p1;
+      
+      #ifdef _WIN32
+      char dirSepFrom = '/';
+      char dirSepTo = '\\';
+      #else
+      char dirSepFrom = '\\';
+      char dirSepTo = '/';
+      #endif
+      
+      p0 = 0;
+      p1 = mScript.find(dirSepFrom, p0);
+      
+      while (p1 != std::string::npos)
+      {
+        mScript[p1] = dirSepTo;
+        p0 = p1 + 1;
+        p1 = mScript.find(dirSepFrom, p0);
+      }
+      
+      if (mVerbose)
+      {
+        AiMsgInfo("[agPyProc] Resolved script path \"%s\"", mScript.c_str());
+      }
+    }
   }
   
-  if (!found)
+  ~PythonDso()
   {
-    path = procpath.substr(p0);
+  }
+  
+  bool valid() const
+  {
+    return (mScript.length() > 0);
+  }
+  
+  int init()
+  {
+    PyGILState_STATE gil = PyGILState_Ensure();
     
-    if (path.length() > 0)
+    int rv = 0;
+    
+    // Derive python module name
+    std::string modname = "agPyProc_";
+    
+    size_t p0 = mScript.find_last_of("\\/");
+    
+    if (p0 != std::string::npos)
     {
-      if (path[0] == '[' && path[path.length()-1] == ']')
+      modname += mScript.substr(p0+1);
+    }
+    else
+    {
+      modname += mScript;
+    }
+    
+    p0 = modname.find('.');
+    
+    if (p0 != std::string::npos)
+    {
+      modname = modname.substr(0, p0);
+    }
+    
+    PyObject *pyimp = PyImport_ImportModule("imp");
+    
+    if (pyimp == NULL)
+    {
+      AiMsgError("[agPyProc] Could not import imp module");
+      PyErr_Print();
+      PyErr_Clear();
+    }
+    else
+    {
+      PyObject *pyload = PyObject_GetAttrString(pyimp, "load_source");
+      
+      if (pyload == NULL)
       {
-        char *env = getenv(path.substr(1, path.length()-2).c_str());
-        if (env) found = FindInPath(env, script, path);
+        AiMsgError("[agPyProc] No \"load_source\" function in imp module");
+        PyErr_Print();
+        PyErr_Clear();
+        Py_DECREF(pyimp);
       }
       else
       {
-        path += "/" + script;
-        found = ((stat(path.c_str(), &st) == 0) && ((st.st_mode & S_IFREG) != 0));
+        if (mVerbose)
+        {
+          AiMsgInfo("[agPyProc] Loading procedural module");
+        }
+        
+        mModule = PyObject_CallFunction(pyload, (char*)"ss", modname.c_str(), mScript.c_str());
+        
+        if (mModule == NULL)
+        {
+          AiMsgError("[agPyProc] Failed to import procedural python module");
+          PyErr_Print();
+          PyErr_Clear();
+        }
+        else
+        {
+          PyObject *func = PyObject_GetAttrString(mModule, "Init");
+    
+          if (func)
+          {
+            PyObject *pyrv = PyObject_CallFunction(func, (char*)"s", mProcName.c_str());
+            
+            if (pyrv)
+            {
+              if (PyTuple_Check(pyrv) && PyTuple_Size(pyrv) == 2)
+              {
+                mUserData = PyTuple_GetItem(pyrv, 1);
+                
+                Py_INCREF(mUserData);
+                
+                rv = PyInt_AsLong(PyTuple_GetItem(pyrv, 0));
+                
+                if (rv == -1 && PyErr_Occurred() != NULL)
+                {
+                  AiMsgError("[agPyProc] Invalid return value for \"Init\" function in module \"%s\"", mScript.c_str());
+                  PyErr_Print();
+                  PyErr_Clear();
+                  
+                  rv = 0;
+                }
+              }
+              else
+              {
+                AiMsgError("[agPyProc] Invalid return value for \"Init\" function in module \"%s\"", mScript.c_str());
+              }
+              
+              Py_DECREF(pyrv);
+            }
+            else
+            {
+              AiMsgError("[agPyProc] \"Init\" function failed in module \"%s\"", mScript.c_str());
+              PyErr_Print();
+              PyErr_Clear();
+            }
+            
+            Py_DECREF(func);
+          }
+          else
+          {
+            AiMsgError("[agPyProc] No \"Init\" function in module \"%s\"", mScript.c_str());
+          }
+        }
+        
+        Py_DECREF(pyload);
       }
+      
+      Py_DECREF(pyimp);
     }
+    
+    PyGILState_Release(gil);
+    
+    return rv;
   }
   
-  return found;
-}
+  int numNodes()
+  {
+    PyGILState_STATE gil = PyGILState_Ensure();
+    
+    int rv = 0;
+    
+    PyObject *func = PyObject_GetAttrString(mModule, "NumNodes");
+    
+    if (func)
+    {
+      PyObject *pyrv = PyObject_CallFunction(func, (char*)"O", mUserData);
+      
+      if (pyrv)
+      {
+        rv = PyInt_AsLong(pyrv);
+        
+        if (rv == -1 && PyErr_Occurred() != NULL)
+        {
+          AiMsgError("[agPyProc] Invalid return value for \"NumNodes\" function in module \"%s\"", mScript.c_str());
+          PyErr_Print();
+          PyErr_Clear();
+          rv = 0;
+        }
+        
+        Py_DECREF(pyrv);
+      }
+      else
+      {
+        AiMsgError("[agPyProc] \"NumNodes\" function failed in module \"%s\"", mScript.c_str());
+        PyErr_Print();
+        PyErr_Clear();
+      }
+      
+      Py_DECREF(func);
+    }
+    else
+    {
+      AiMsgError("[agPyProc] No \"NumNodes\" function in module \"%s\"", mScript.c_str());
+    }
+    
+    PyGILState_Release(gil);
+    
+    return rv;
+  }
+  
+  AtNode* getNode(int i)
+  {
+    PyGILState_STATE gil = PyGILState_Ensure();
+    
+    AtNode *rv = 0;
+    
+    PyObject *func = PyObject_GetAttrString(mModule, "GetNode");
+    
+    if (func)
+    {
+      PyObject *pyrv = PyObject_CallFunction(func, (char*)"Oi", mUserData, i);
+      
+      if (pyrv)
+      {
+        if (!PyString_Check(pyrv))
+        {
+          AiMsgError("[agPyProc] Invalid return value for \"GetNode\" function in module \"%s\"", mScript.c_str());
+        }
+        
+        const char *nodeName = PyString_AsString(pyrv);
+        
+        rv = AiNodeLookUpByName(nodeName);
+        
+        if (rv == NULL)
+        {
+          AiMsgError("[agPyProc] Invalid node name \"%s\" return by \"GetNode\" function in modulde \"%s\"", nodeName, mScript.c_str());
+        }
+        
+        Py_DECREF(pyrv);
+      }
+      else
+      {
+        AiMsgError("[agPyProc] \"GetNode\" function failed in module \"%s\"", mScript.c_str());
+        PyErr_Print();
+        PyErr_Clear();
+      }
+      
+      Py_DECREF(func);
+    }
+    else
+    {
+      AiMsgError("[agPyProc] No \"GetNode\" function in module \"%s\"", mScript.c_str());
+    }
+    
+    PyGILState_Release(gil);
+    
+    return rv;
+  }
+  
+  int cleanup()
+  {
+    PyGILState_STATE gil = PyGILState_Ensure();
+    
+    int rv = 0;
+    
+    PyObject *func = PyObject_GetAttrString(mModule, "Cleanup");
+    
+    if (func)
+    {
+      PyObject *pyrv = PyObject_CallFunction(func, (char*)"O", mUserData);
+      
+      if (pyrv)
+      {
+        rv = PyInt_AsLong(pyrv);
+        
+        if (rv == -1 && PyErr_Occurred() != NULL)
+        {
+          AiMsgError("[agPyProc] Invalid return value for \"Cleanup\" function in module \"%s\"", mScript.c_str());
+          PyErr_Print();
+          PyErr_Clear();
+          rv = 0;
+        }
+        
+        Py_DECREF(pyrv);
+      }
+      else
+      {
+        AiMsgError("[agPyProc] \"Cleanup\" function failed in module \"%s\"", mScript.c_str());
+        PyErr_Print();
+        PyErr_Clear();
+      }
+      
+      Py_DECREF(func);
+    }
+    else
+    {
+      AiMsgError("[agPyProc] No \"Cleanup\" function in module \"%s\"", mScript.c_str());
+    }
+    
+    Py_DECREF(mUserData);
+    Py_DECREF(mModule);
+    
+    mUserData = 0;
+    mModule = 0;
+    
+    PyGILState_Release(gil);
+    
+    return rv;
+  }
+  
+private:
+  
+  bool findInPath(const std::string &procpath, const std::string &script, std::string &path)
+  {
+    #ifdef _WIN32
+    char sep = ';';
+    #else
+    char sep = ':';
+    #endif
+    
+    struct stat st;
+    bool found = false;
+
+    size_t p0 = 0;
+    size_t p1 = procpath.find(sep, p0);
+
+    while (!found && p1 != std::string::npos)
+    {
+      path = procpath.substr(p0, p1-p0);
+      
+      if (path.length() > 0)
+      {
+        if (path[0] == '[' && path[path.length()-1] == ']')
+        {
+          char *env = getenv(path.substr(1, path.length()-2).c_str());
+          if (env) found = findInPath(env, script, path);
+        }
+        else
+        {
+          path += "/" + script;
+          found = ((stat(path.c_str(), &st) == 0) && ((st.st_mode & S_IFREG) != 0));
+        }
+      }
+      
+      p0 = p1 + 1;
+      p1 = procpath.find(sep, p0);
+    }
+    
+    if (!found)
+    {
+      path = procpath.substr(p0);
+      
+      if (path.length() > 0)
+      {
+        if (path[0] == '[' && path[path.length()-1] == ']')
+        {
+          char *env = getenv(path.substr(1, path.length()-2).c_str());
+          if (env) found = findInPath(env, script, path);
+        }
+        else
+        {
+          path += "/" + script;
+          found = ((stat(path.c_str(), &st) == 0) && ((st.st_mode & S_IFREG) != 0));
+        }
+      }
+    }
+    
+    return found;
+  }
+
+private:
+  
+  std::string mProcName;
+  std::string mScript;
+  PyObject *mModule;
+  PyObject *mUserData;
+  bool mVerbose;
+};
+
 
 // ---
 
 int PyDSOInit(AtNode *node, void **user_ptr)
 {
-  PythonInterpreter &py = PythonInterpreter::Get();
-  if (!py.isRunning())
+  if (!Py_IsInitialized())
   {
-    AiMsgWarning("[agPyProc] Python not running");
+    AiMsgWarning("[agPyProc] Init: Python not initialized");
     return 0;
   }
   
-  bool verbose = false;
-  if (AiNodeLookUpUserParameter(node, "verbose") != NULL)
+  PythonDso *dso = new PythonDso(node);
+  
+  if (dso->valid())
   {
-    verbose = AiNodeGetBool(node, "verbose");
-  }
-  
-  ProcData *data = new ProcData();
-  data->procName = AiNodeGetStr(node, "name");
-  data->script = "";
-  data->module = NULL;
-  data->userPtr = NULL;
-  data->verbose = verbose;
-  
-  *user_ptr = (void*) data;
-  
-  std::string script = AiNodeGetStr(node, "data");
-  
-  struct stat st;
-  
-  if ((stat(script.c_str(), &st) != 0) || ((st.st_mode & S_IFREG) == 0))
-  {
-    if (verbose)
-    {
-      AiMsgInfo("[agPyProc] Search python procedural in options.procedural_searchpath...");
-    }
-    // look in procedural search path
-    AtNode *opts = AiUniverseGetOptions();
-    if (!opts)
-    {
-      AiMsgWarning("[agPyProc] No 'options' node");
-      return 0;
-    }
-    std::string procpath = AiNodeGetStr(opts, "procedural_searchpath");
-    if (!FindInPath(procpath, script, data->script))
-    {
-      AiMsgWarning("[agPyProc] Python procedural '%s' not found in path", script.c_str());
-      return 0;
-    }
+    *user_ptr = (void*)dso;
+    
+    return dso->init();
   }
   else
   {
-    data->script = script;
-  }
-  
-  size_t p0, p1;
-  
-#ifdef _WIN32
-  char dirSepFrom = '/';
-  char dirSepTo = '\\';
-#else
-  char dirSepFrom = '\\';
-  char dirSepTo = '/';
-#endif
-  p0 = 0;
-  p1 = data->script.find(dirSepFrom, p0);
-  while (p1 != std::string::npos)
-  {
-    data->script[p1] = dirSepTo;
-    p0 = p1 + 1;
-    p1 = data->script.find(dirSepFrom, p0);
-  }
-  
-  return py.procInit(data);
-}
-
-int PyDSOCleanup(void *user_ptr)
-{
-  PythonInterpreter &py = PythonInterpreter::Get();
-  if (!py.isRunning())
-  {
     return 0;
   }
-  
-  ProcData *data = (ProcData*) user_ptr;
-  
-  int rv = py.procCleanup(data);
-  
-  delete data;
-  
-  return rv;
 }
 
 int PyDSONumNodes(void *user_ptr)
 {
-  PythonInterpreter &py = PythonInterpreter::Get();
-  if (!py.isRunning())
+  if (!Py_IsInitialized())
   {
+    AiMsgWarning("[agPyProc] NumNodes: Python not initialized");
     return 0;
   }
   
-  ProcData *data = (ProcData*) user_ptr;
+  PythonDso *dso = (PythonDso*) user_ptr;
   
-  return py.procNumNodes(data);
+  return dso->numNodes();
 }
 
 AtNode* PyDSOGetNode(void *user_ptr, int i)
 {
-  PythonInterpreter &py = PythonInterpreter::Get();
-  if (!py.isRunning())
+  if (!Py_IsInitialized())
   {
+    AiMsgWarning("[agPyProc] GetNode: Python not initialized");
     return 0;
   }
   
-  ProcData *data = (ProcData*) user_ptr;
+  PythonDso *dso = (PythonDso*) user_ptr;
   
-  return py.procGetNode(data, i);
+  return dso->getNode(i);
+}
+
+int PyDSOCleanup(void *user_ptr)
+{
+  if (!Py_IsInitialized())
+  {
+    AiMsgWarning("[agPyProc] Cleanup: Python not initialized");
+    return 0;
+  }
+  
+  PythonDso *dso = (PythonDso*) user_ptr;
+  
+  int rv = dso->cleanup();
+  
+  delete dso;
+  
+  return rv;
 }
 
 proc_loader
@@ -775,11 +713,11 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID reserved)
   switch (reason)
   {
   case DLL_PROCESS_ATTACH:
-    PythonInterpreter::Get();
+    PythonInterpreter::Begin();
     break;
     
   case DLL_PROCESS_DETACH:
-    PythonInterpreter::Finish();
+    PythonInterpreter::End();
     
   default:
     break;
@@ -792,12 +730,12 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID reserved)
 
 __attribute__((constructor)) void _agPyProcLoad(void)
 {
-  PythonInterpreter::Get();
+  PythonInterpreter::Begin();
 }
 
 __attribute__((destructor)) void _agPyProcUnload(void)
 {
-  PythonInterpreter::Finish();
+  PythonInterpreter::End();
 }
 
 #endif
