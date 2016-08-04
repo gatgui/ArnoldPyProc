@@ -71,6 +71,7 @@ private:
   
   PythonInterpreter()
     : mMainState(0)
+    , mRestoreState(0)
     , mRunning(false)
   {
     char *pyproc_debug = getenv("AGPYPROC_DEBUG");
@@ -116,6 +117,14 @@ private:
         PyThreadState_Swap(PyGILState_GetThisThreadState());
         PyEval_SaveThread();
       }
+      else
+      {
+        if (_PyThreadState_Current)
+        {
+          mRestoreState = _PyThreadState_Current;
+          PyEval_SaveThread();
+        }
+      }
       
       PyGILState_STATE gil = PyGILState_Ensure();
       
@@ -154,6 +163,14 @@ private:
         PyEval_RestoreThread(mMainState);
         
         Py_Finalize();
+        
+        mMainState = 0;
+      }
+      else if (mRestoreState)
+      {
+        PyEval_RestoreThread(mRestoreState);
+        
+        mRestoreState = 0;
       }
       
       mRunning = false;
@@ -190,6 +207,7 @@ public:
 private:
   
   PyThreadState *mMainState;
+  PyThreadState *mRestoreState;
   bool mRunning;
   
   static PythonInterpreter *msInstance;
@@ -396,6 +414,7 @@ public:
           else
           {
             AiMsgError("[agPyProc] No \"Init\" function in module \"%s\"", mScript.c_str());
+            PyErr_Clear();
           }
         }
         
@@ -448,6 +467,7 @@ public:
     else
     {
       AiMsgError("[agPyProc] No \"NumNodes\" function in module \"%s\"", mScript.c_str());
+      PyErr_Clear();
     }
     
     PyGILState_Release(gil);
@@ -497,6 +517,7 @@ public:
     else
     {
       AiMsgError("[agPyProc] No \"GetNode\" function in module \"%s\"", mScript.c_str());
+      PyErr_Clear();
     }
     
     PyGILState_Release(gil);
@@ -542,6 +563,7 @@ public:
     else
     {
       AiMsgError("[agPyProc] No \"Cleanup\" function in module \"%s\"", mScript.c_str());
+      PyErr_Clear();
     }
     
     Py_DECREF(mUserData);
