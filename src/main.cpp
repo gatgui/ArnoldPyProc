@@ -76,7 +76,7 @@ private:
       std::string path = tmp.substr(p0, p1-p0);
       if (path.length() > 0)
       {
-        AiMsgInfo("[agPyProc]   %s", path.c_str());
+        AiMsgInfo("[pyproc]   %s", path.c_str());
       }
       p0 = p1 + 1;
       p1 = tmp.find(sep, p0);
@@ -85,7 +85,7 @@ private:
     std::string path = tmp.substr(p0);
     if (path.length() > 0)
     {
-      AiMsgInfo("[agPyProc]   %s", path.c_str());
+      AiMsgInfo("[pyproc]   %s", path.c_str());
     }
   }
   
@@ -96,7 +96,7 @@ private:
     , mRestoreState(0)
     , mRunning(false)
   {
-    char *pyproc_debug = getenv("AGPYPROC_DEBUG");
+    char *pyproc_debug = getenv("PYPROC_DEBUG");
     int debug = 0;
     
     if (pyproc_debug && sscanf(pyproc_debug, "%d", &debug) == 1 && debug != 0)
@@ -114,25 +114,25 @@ private:
       
       if (libpath)
       {
-        AiMsgInfo("[agPyProc] LIBPATH:");
+        AiMsgInfo("[pyproc] LIBPATH:");
         PrintPath(libpath);
       }
       
       char *pypath = getenv("PYTHONPATH");
       if (pypath)
       {
-        AiMsgInfo("[agPyProc] PYTHONPATH:");
+        AiMsgInfo("[pyproc] PYTHONPATH:");
         PrintPath(pypath);
       }
     }
     
     if (Py_IsInitialized() != 0)
     {
-      AiMsgInfo("[agPyProc] Python already initialized");
+      AiMsgInfo("[pyproc] Python already initialized");
       
       if (PyEval_ThreadsInitialized() == 0)
       {
-        AiMsgInfo("[agPyProc] Initialize python threads");
+        AiMsgInfo("[pyproc] Initialize python threads");
         
         PyEval_InitThreads();
         
@@ -156,9 +156,9 @@ private:
     }
     else
     {
-      AiMsgInfo("[agPyProc] Initializing python");
+      AiMsgInfo("[pyproc] Initializing python");
       
-      Py_SetProgramName((char*)"agPyProc");
+      Py_SetProgramName((char*)"pyproc");
       
       Py_Initialize();
       
@@ -180,7 +180,7 @@ private:
     {
       if (mMainState)
       {
-        AiMsgInfo("[agPyProc] Finalize python");
+        AiMsgInfo("[pyproc] Finalize python");
         
         PyEval_RestoreThread(mMainState);
         
@@ -265,7 +265,7 @@ public:
     {
       if (mVerbose)
       {
-        AiMsgInfo("[agPyProc] Search python procedural in options.procedural_searchpath...");
+        AiMsgInfo("[pyproc] Search python procedural in options.procedural_searchpath...");
       }
       
       // look in procedural search path
@@ -273,7 +273,7 @@ public:
       
       if (!opts)
       {
-        AiMsgWarning("[agPyProc] No 'options' node");
+        AiMsgWarning("[pyproc] No 'options' node");
       }
       else
       {
@@ -281,7 +281,7 @@ public:
         
         if (!findInPath(procpath, script, mScript))
         {
-          AiMsgWarning("[agPyProc] Python procedural '%s' not found in path", script.c_str());
+          AiMsgWarning("[pyproc] Python procedural '%s' not found in path", script.c_str());
           mScript = "";
         }
       }
@@ -315,7 +315,7 @@ public:
       
       if (mVerbose)
       {
-        AiMsgInfo("[agPyProc] Resolved script path \"%s\"", mScript.c_str());
+        AiMsgInfo("[pyproc] Resolved script path \"%s\"", mScript.c_str());
       }
     }
   }
@@ -336,7 +336,7 @@ public:
     int rv = 0;
     
     // Derive python module name
-    std::string modname = "agPyProc_";
+    std::string modname = "pyproc_";
     
     size_t p0 = mScript.find_last_of("\\/");
     
@@ -360,7 +360,7 @@ public:
     
     if (pyimp == NULL)
     {
-      AiMsgError("[agPyProc] Could not import imp module");
+      AiMsgError("[pyproc] Could not import imp module");
       PyErr_Print();
       PyErr_Clear();
     }
@@ -370,7 +370,7 @@ public:
       
       if (pyload == NULL)
       {
-        AiMsgError("[agPyProc] No \"load_source\" function in imp module");
+        AiMsgError("[pyproc] No \"load_source\" function in imp module");
         PyErr_Print();
         PyErr_Clear();
         Py_DECREF(pyimp);
@@ -379,14 +379,14 @@ public:
       {
         if (mVerbose)
         {
-          AiMsgInfo("[agPyProc] Loading procedural module");
+          AiMsgInfo("[pyproc] Loading procedural module");
         }
         
         mModule = PyObject_CallFunction(pyload, (char*)"ss", modname.c_str(), mScript.c_str());
         
         if (mModule == NULL)
         {
-          AiMsgError("[agPyProc] Failed to import procedural python module");
+          AiMsgError("[pyproc] Failed to import procedural python module");
           PyErr_Print();
           PyErr_Clear();
         }
@@ -410,7 +410,7 @@ public:
                 
                 if (rv == -1 && PyErr_Occurred() != NULL)
                 {
-                  AiMsgError("[agPyProc] Invalid return value for \"Init\" function in module \"%s\"", mScript.c_str());
+                  AiMsgError("[pyproc] Invalid return value for \"Init\" function in module \"%s\"", mScript.c_str());
                   PyErr_Print();
                   PyErr_Clear();
                   
@@ -419,14 +419,14 @@ public:
               }
               else
               {
-                AiMsgError("[agPyProc] Invalid return value for \"Init\" function in module \"%s\"", mScript.c_str());
+                AiMsgError("[pyproc] Invalid return value for \"Init\" function in module \"%s\"", mScript.c_str());
               }
               
               Py_DECREF(pyrv);
             }
             else
             {
-              AiMsgError("[agPyProc] \"Init\" function failed in module \"%s\"", mScript.c_str());
+              AiMsgError("[pyproc] \"Init\" function failed in module \"%s\"", mScript.c_str());
               PyErr_Print();
               PyErr_Clear();
             }
@@ -435,7 +435,7 @@ public:
           }
           else
           {
-            AiMsgError("[agPyProc] No \"Init\" function in module \"%s\"", mScript.c_str());
+            AiMsgError("[pyproc] No \"Init\" function in module \"%s\"", mScript.c_str());
             PyErr_Clear();
           }
         }
@@ -469,7 +469,7 @@ public:
         
         if (rv == -1 && PyErr_Occurred() != NULL)
         {
-          AiMsgError("[agPyProc] Invalid return value for \"NumNodes\" function in module \"%s\"", mScript.c_str());
+          AiMsgError("[pyproc] Invalid return value for \"NumNodes\" function in module \"%s\"", mScript.c_str());
           PyErr_Print();
           PyErr_Clear();
           rv = 0;
@@ -479,7 +479,7 @@ public:
       }
       else
       {
-        AiMsgError("[agPyProc] \"NumNodes\" function failed in module \"%s\"", mScript.c_str());
+        AiMsgError("[pyproc] \"NumNodes\" function failed in module \"%s\"", mScript.c_str());
         PyErr_Print();
         PyErr_Clear();
       }
@@ -488,7 +488,7 @@ public:
     }
     else
     {
-      AiMsgError("[agPyProc] No \"NumNodes\" function in module \"%s\"", mScript.c_str());
+      AiMsgError("[pyproc] No \"NumNodes\" function in module \"%s\"", mScript.c_str());
       PyErr_Clear();
     }
     
@@ -513,7 +513,7 @@ public:
       {
         if (!PyString_Check(pyrv))
         {
-          AiMsgError("[agPyProc] Invalid return value for \"GetNode\" function in module \"%s\"", mScript.c_str());
+          AiMsgError("[pyproc] Invalid return value for \"GetNode\" function in module \"%s\"", mScript.c_str());
         }
         
         const char *nodeName = PyString_AsString(pyrv);
@@ -522,14 +522,14 @@ public:
         
         if (rv == NULL)
         {
-          AiMsgError("[agPyProc] Invalid node name \"%s\" return by \"GetNode\" function in modulde \"%s\"", nodeName, mScript.c_str());
+          AiMsgError("[pyproc] Invalid node name \"%s\" return by \"GetNode\" function in modulde \"%s\"", nodeName, mScript.c_str());
         }
         
         Py_DECREF(pyrv);
       }
       else
       {
-        AiMsgError("[agPyProc] \"GetNode\" function failed in module \"%s\"", mScript.c_str());
+        AiMsgError("[pyproc] \"GetNode\" function failed in module \"%s\"", mScript.c_str());
         PyErr_Print();
         PyErr_Clear();
       }
@@ -538,7 +538,7 @@ public:
     }
     else
     {
-      AiMsgError("[agPyProc] No \"GetNode\" function in module \"%s\"", mScript.c_str());
+      AiMsgError("[pyproc] No \"GetNode\" function in module \"%s\"", mScript.c_str());
       PyErr_Clear();
     }
     
@@ -565,7 +565,7 @@ public:
         
         if (rv == -1 && PyErr_Occurred() != NULL)
         {
-          AiMsgError("[agPyProc] Invalid return value for \"Cleanup\" function in module \"%s\"", mScript.c_str());
+          AiMsgError("[pyproc] Invalid return value for \"Cleanup\" function in module \"%s\"", mScript.c_str());
           PyErr_Print();
           PyErr_Clear();
           rv = 0;
@@ -575,7 +575,7 @@ public:
       }
       else
       {
-        AiMsgError("[agPyProc] \"Cleanup\" function failed in module \"%s\"", mScript.c_str());
+        AiMsgError("[pyproc] \"Cleanup\" function failed in module \"%s\"", mScript.c_str());
         PyErr_Print();
         PyErr_Clear();
       }
@@ -584,7 +584,7 @@ public:
     }
     else
     {
-      AiMsgError("[agPyProc] No \"Cleanup\" function in module \"%s\"", mScript.c_str());
+      AiMsgError("[pyproc] No \"Cleanup\" function in module \"%s\"", mScript.c_str());
       PyErr_Clear();
     }
     
@@ -675,7 +675,7 @@ int PyDSOInit(AtNode *node, void **user_ptr)
 {
   if (!Py_IsInitialized())
   {
-    AiMsgWarning("[agPyProc] Init: Python not initialized");
+    AiMsgWarning("[pyproc] Init: Python not initialized");
     return 0;
   }
   
@@ -697,7 +697,7 @@ int PyDSONumNodes(void *user_ptr)
 {
   if (!Py_IsInitialized())
   {
-    AiMsgWarning("[agPyProc] NumNodes: Python not initialized");
+    AiMsgWarning("[pyproc] NumNodes: Python not initialized");
     return 0;
   }
   
@@ -710,7 +710,7 @@ AtNode* PyDSOGetNode(void *user_ptr, int i)
 {
   if (!Py_IsInitialized())
   {
-    AiMsgWarning("[agPyProc] GetNode: Python not initialized");
+    AiMsgWarning("[pyproc] GetNode: Python not initialized");
     return 0;
   }
   
@@ -723,7 +723,7 @@ int PyDSOCleanup(void *user_ptr)
 {
   if (!Py_IsInitialized())
   {
-    AiMsgWarning("[agPyProc] Cleanup: Python not initialized");
+    AiMsgWarning("[pyproc] Cleanup: Python not initialized");
     return 0;
   }
   
@@ -773,12 +773,12 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID reserved)
 
 #else
 
-__attribute__((constructor)) void _agPyProcLoad(void)
+__attribute__((constructor)) void _PyProcLoad(void)
 {
   PythonInterpreter::Begin();
 }
 
-__attribute__((destructor)) void _agPyProcUnload(void)
+__attribute__((destructor)) void _PyProcUnload(void)
 {
   PythonInterpreter::End();
 }
