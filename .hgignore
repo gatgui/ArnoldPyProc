@@ -1,7 +1,0 @@
-syntax: glob
-release
-debug
-.build
-*.dblite
-*.pyc
-*.exr

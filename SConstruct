@@ -7,12 +7,18 @@ from excons.tools import python
 env = excons.MakeBaseEnv()
 
 prjs = [
-  {"name": "agPyProc",
+  {"name": "pyproc",
+   "prefix": "arnold",
    "type": "dynamicmodule",
    "ext": arnold.PluginExt(),
-   "srcs": ["agPyProc.cpp"],
+   "srcs": ["src/main.cpp"],
    "custom": [arnold.Require, python.SoftRequire]
   }
 ]
 
 excons.DeclareTargets(env, prjs)
+
+excons.EcosystemDist(env, "pyproc.env", {"pyproc": ""})
+
+Default(["pyproc"])
+

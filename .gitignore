@@ -1,0 +1,9 @@
+/release/
+/debug/
+/.build/
+/eco/
+*.dblite
+*.pyc
+*.exr
+excons.cache
+

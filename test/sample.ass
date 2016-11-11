@@ -39,7 +39,7 @@ distant_light
 procedural
 {
    name "proc1"
-   dso "agPyProc.so"
+   dso "pyproc.so"
    data "sample.py"
    declare verbose constant BOOL
    verbose on

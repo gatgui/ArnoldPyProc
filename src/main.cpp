@@ -33,11 +33,11 @@ private:
   
   static void PrintPath(const char *p)
   {
-    #ifdef _WIN32
+#ifdef _WIN32
     int sep = ';';
-    #else
+#else
     int sep = ':';
-    #endif
+#endif
     
     if (!p)
     {
@@ -79,16 +79,16 @@ private:
     
     if (pyproc_debug && sscanf(pyproc_debug, "%d", &debug) == 1 && debug != 0)
     {
-      #ifdef _WIN32
+#ifdef _WIN32
       char *libpath = getenv("PATH");
-      #else
-      #ifdef __APPLE__
+#else
+#  ifdef __APPLE__
       // This is not DYLD_LIBRARY_PATH, on OSX Python is used as a framework
       char *libpath = 0;
-      #else
+#  else
       char *libpath = getenv("LD_LIBRARY_PATH");
-      #endif
-      #endif
+#  endif
+#endif
       
       if (libpath)
       {
@@ -273,13 +273,13 @@ public:
     {
       size_t p0, p1;
       
-      #ifdef _WIN32
+#ifdef _WIN32
       char dirSepFrom = '/';
       char dirSepTo = '\\';
-      #else
+#else
       char dirSepFrom = '\\';
       char dirSepTo = '/';
-      #endif
+#endif
       
       p0 = 0;
       p1 = mScript.find(dirSepFrom, p0);
@@ -581,11 +581,11 @@ private:
   
   bool findInPath(const std::string &procpath, const std::string &script, std::string &path)
   {
-    #ifdef _WIN32
+#ifdef _WIN32
     char sep = ';';
-    #else
+#else
     char sep = ':';
-    #endif
+#endif
     
     struct stat st;
     bool found = false;
@@ -728,8 +728,8 @@ proc_loader
 
 #ifdef _WIN32
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
 
 BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID reserved)
 {
@@ -762,3 +762,4 @@ __attribute__((destructor)) void _agPyProcUnload(void)
 }
 
 #endif
+
