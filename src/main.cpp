@@ -681,7 +681,7 @@ procedural_init
   if (!opts)
   {
     AiMsgWarning("[pyproc] No 'options' node");
-    return false;
+    return 0;
   }
   else
   {
@@ -697,7 +697,7 @@ procedural_init
 
   if (!dso->valid())
   {
-    return false;
+    return 0;
   }
 
   return dso->init();
@@ -709,7 +709,7 @@ procedural_cleanup
   if (!Py_IsInitialized())
   {
     AiMsgWarning("[pyproc] Cleanup: Python not initialized");
-    return false;
+    return 0;
   }
 
   PythonDso *dso = (PythonDso*) user_ptr;

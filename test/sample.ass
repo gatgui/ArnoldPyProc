@@ -5,7 +5,7 @@ options
  yres 480
  bucket_scanning "spiral"
  camera "camera1"
- procedural_searchpath "[ARNOLD_PROCEDURAL_PATH]:."
+ procedural_searchpath "."
  GI_diffuse_depth 1
  GI_glossy_depth 1
  GI_diffuse_samples 0
