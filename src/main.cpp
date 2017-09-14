@@ -243,22 +243,13 @@ class PythonDso
 {
 public:
   
-  PythonDso(AtNode *node)
-    : mProcName("")
+  PythonDso(std::string node_name, std::string script, std::string procedural_path, bool verbose)
+    : mProcName(node_name)
     , mScript("")
     , mModule(0)
     , mUserData(0)
-    , mVerbose(false)
+    , mVerbose(verbose)
   {
-    if (AiNodeLookUpUserParameter(node, "verbose") != NULL)
-    {
-      mVerbose = AiNodeGetBool(node, "verbose");
-    }
-    
-    mProcName = AiNodeGetStr(node, "name");
-    
-    std::string script = AiNodeGetStr(node, "data");
-    
     struct stat st;
     
     if ((stat(script.c_str(), &st) != 0) || ((st.st_mode & S_IFREG) == 0))
@@ -269,21 +260,12 @@ public:
       }
       
       // look in procedural search path
-      AtNode *opts = AiUniverseGetOptions();
+      std::string procpath = procedural_path.c_str();
       
-      if (!opts)
+      if (!findInPath(procpath, script.c_str(), mScript))
       {
-        AiMsgWarning("[pyproc] No 'options' node");
-      }
-      else
-      {
-        std::string procpath = AiNodeGetStr(opts, "procedural_searchpath");
-        
-        if (!findInPath(procpath, script, mScript))
-        {
-          AiMsgWarning("[pyproc] Python procedural '%s' not found in path", script.c_str());
-          mScript = "";
-        }
+        AiMsgWarning("[pyproc] Python procedural '%s' not found in path", script.c_str());
+        mScript = "";
       }
     }
     else
@@ -671,29 +653,75 @@ private:
 
 // ---
 
-int PyDSOInit(AtNode *node, void **user_ptr)
+struct PyProc
 {
-  if (!Py_IsInitialized())
+  AtString script;
+  bool verbose;
+};
+
+
+AI_PROCEDURAL_NODE_EXPORT_METHODS(PyProcMtd);
+
+
+node_parameters
+{
+  AiParameterStr("script", "");
+  AiParameterBool("verbose", false);
+}
+
+
+procedural_init
+{
+  std::string script;
+  std::string name;
+  std::string procedural_path;
+  bool verbose;
+
+  AtNode *opts = AiUniverseGetOptions();
+  if (!opts)
   {
-    AiMsgWarning("[pyproc] Init: Python not initialized");
-    return 0;
-  }
-  
-  PythonDso *dso = new PythonDso(node);
-  
-  if (dso->valid())
-  {
-    *user_ptr = (void*)dso;
-    
-    return dso->init();
+    AiMsgWarning("[pyproc] No 'options' node");
+    return false;
   }
   else
   {
-    return 0;
+    procedural_path = AiNodeGetStr(opts, "procedural_searchpath");
   }
+
+  name = AiNodeGetStr(node, "name").c_str();
+  script = AiNodeGetStr(node, "script").c_str();
+  verbose = AiNodeGetBool(node, "verbose");
+
+  PythonDso *dso = new PythonDso(name, script, procedural_path, verbose);
+  *user_ptr = dso;
+
+  if (!dso->valid())
+  {
+    return false;
+  }
+
+  return (dso->init() == 1);
 }
 
-int PyDSONumNodes(void *user_ptr)
+
+procedural_cleanup
+{
+  if (!Py_IsInitialized())
+  {
+    AiMsgWarning("[pyproc] Cleanup: Python not initialized");
+    return false;
+  }
+
+  PythonDso *dso = (PythonDso*) user_ptr;
+
+  bool rv = (dso->cleanup() == 1);
+  delete dso;
+
+  return rv;
+}
+
+
+procedural_num_nodes
 {
   if (!Py_IsInitialized())
   {
@@ -706,7 +734,8 @@ int PyDSONumNodes(void *user_ptr)
   return dso->numNodes();
 }
 
-AtNode* PyDSOGetNode(void *user_ptr, int i)
+
+procedural_get_node
 {
   if (!Py_IsInitialized())
   {
@@ -719,30 +748,20 @@ AtNode* PyDSOGetNode(void *user_ptr, int i)
   return dso->getNode(i);
 }
 
-int PyDSOCleanup(void *user_ptr)
-{
-  if (!Py_IsInitialized())
-  {
-    AiMsgWarning("[pyproc] Cleanup: Python not initialized");
-    return 0;
-  }
-  
-  PythonDso *dso = (PythonDso*) user_ptr;
-  
-  int rv = dso->cleanup();
-  
-  delete dso;
-  
-  return rv;
-}
 
-proc_loader
+node_loader
 {
-  vtable->Init = PyDSOInit;
-  vtable->Cleanup = PyDSOCleanup;
-  vtable->NumNodes = PyDSONumNodes;
-  vtable->GetNode = PyDSOGetNode;
-  strcpy(vtable->version, AI_VERSION);
+  if (i > 0)
+  {
+    return false;
+  }
+
+  node->methods = PyProcMtd;
+  node->output_type = AI_TYPE_NONE;
+  node->name = "pyproc";
+  node->node_type = AI_NODE_SHAPE_PROCEDURAL;
+  strcpy(node->version, AI_VERSION);
+
   return true;
 }
 
