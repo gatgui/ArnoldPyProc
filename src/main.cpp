@@ -700,7 +700,7 @@ procedural_init
     return false;
   }
 
-  return (dso->init() == 1);
+  return dso->init();
 }
 
 
@@ -714,7 +714,7 @@ procedural_cleanup
 
   PythonDso *dso = (PythonDso*) user_ptr;
 
-  bool rv = (dso->cleanup() == 1);
+  int rv = dso->cleanup();
   delete dso;
 
   return rv;
