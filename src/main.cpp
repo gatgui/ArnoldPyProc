@@ -28,6 +28,16 @@ SOFTWARE.
 #include <cstring>
 
 // ---
+#if AI_VERSION_ARCH_NUM < 5
+#define PROC_CLEAN_UP int PyDSOCleanup(void *user_ptr)
+#define PRO_NUM_NODE int PyDSONumNodes(void *user_ptr)
+#define PROC_GET_NODE AtNode* PyDSOGetNode(void *user_ptr, int i)
+#define ARNOLD_4
+#else
+#define PROC_CLEAN_UP procedural_cleanup
+#define PRO_NUM_NODE procedural_num_nodes
+#define PROC_GET_NODE procedural_get_node
+#endif
 
 class PythonInterpreter
 {
@@ -652,7 +662,112 @@ private:
 
 
 // ---
+PROC_CLEAN_UP
+{
+  if (!Py_IsInitialized())
+  {
+    AiMsgWarning("[pyproc] Cleanup: Python not initialized");
+    return 0;
+  }
 
+  PythonDso *dso = (PythonDso*) user_ptr;
+
+  int rv = dso->cleanup();
+  delete dso;
+
+  return rv;
+}
+
+
+PRO_NUM_NODE
+{
+  if (!Py_IsInitialized())
+  {
+    AiMsgWarning("[pyproc] NumNodes: Python not initialized");
+    return 0;
+  }
+
+  PythonDso *dso = (PythonDso*) user_ptr;
+
+  return dso->numNodes();
+}
+
+
+PROC_GET_NODE
+{
+  if (!Py_IsInitialized())
+  {
+    AiMsgWarning("[pyproc] GetNode: Python not initialized");
+    return 0;
+  }
+
+  PythonDso *dso = (PythonDso*) user_ptr;
+
+  return dso->getNode(i);
+}
+
+
+#ifdef ARNOLD_4
+int PyDSOInit(AtNode *node, void **user_ptr)
+{
+  std::string script;
+  std::string name;
+  std::string procedural_path;
+  bool verbose;
+
+  if (!Py_IsInitialized())
+  {
+    AiMsgWarning("[pyproc] Init: Python not initialized");
+    return 0;
+  }
+
+  AtNode *opts = AiUniverseGetOptions();
+  if (!opts)
+  {
+    AiMsgWarning("[pyproc] No 'options' node");
+    return 0;
+  }
+  else
+  {
+    procedural_path = AiNodeGetStr(opts, "procedural_searchpath");
+  }
+
+  name = AiNodeGetStr(node, "name");
+  script = AiNodeGetStr(node, "data");
+
+  if (AiNodeLookUpUserParameter(node, "verbose") != NULL)
+  {
+    verbose = AiNodeGetBool(node, "verbose");
+  }
+  else
+  {
+    verbose = false;
+  }
+
+  PythonDso *dso = new PythonDso(name, script, procedural_path, verbose);
+
+  if (dso->valid())
+  {
+    *user_ptr = (void*)dso;
+
+    return dso->init();
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+proc_loader
+{
+  vtable->Init = PyDSOInit;
+  vtable->Cleanup = PyDSOCleanup;
+  vtable->NumNodes = PyDSONumNodes;
+  vtable->GetNode = PyDSOGetNode;
+  strcpy(vtable->version, AI_VERSION);
+  return true;
+}
+#else
 struct PyProc
 {
   AtString script;
@@ -703,52 +818,6 @@ procedural_init
   return dso->init();
 }
 
-
-procedural_cleanup
-{
-  if (!Py_IsInitialized())
-  {
-    AiMsgWarning("[pyproc] Cleanup: Python not initialized");
-    return 0;
-  }
-
-  PythonDso *dso = (PythonDso*) user_ptr;
-
-  int rv = dso->cleanup();
-  delete dso;
-
-  return rv;
-}
-
-
-procedural_num_nodes
-{
-  if (!Py_IsInitialized())
-  {
-    AiMsgWarning("[pyproc] NumNodes: Python not initialized");
-    return 0;
-  }
-  
-  PythonDso *dso = (PythonDso*) user_ptr;
-  
-  return dso->numNodes();
-}
-
-
-procedural_get_node
-{
-  if (!Py_IsInitialized())
-  {
-    AiMsgWarning("[pyproc] GetNode: Python not initialized");
-    return 0;
-  }
-  
-  PythonDso *dso = (PythonDso*) user_ptr;
-  
-  return dso->getNode(i);
-}
-
-
 node_loader
 {
   if (i > 0)
@@ -764,6 +833,7 @@ node_loader
 
   return true;
 }
+#endif // ARNOLD_4
 
 // ---
 
