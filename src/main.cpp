@@ -800,6 +800,12 @@ procedural_init
   }
   else
   {
+    procedural_path = AiNodeGetStr(opts, "plugin_searchpath");
+    #ifdef _WIN32
+      procedural_path += ';';
+    #else
+      procedural_path += ':';
+    #endif
     procedural_path = AiNodeGetStr(opts, "procedural_searchpath");
   }
 
