@@ -5,12 +5,6 @@ options
  yres 480
  bucket_scanning "spiral"
  camera "camera1"
- procedural_searchpath "."
- GI_diffuse_depth 1
- GI_glossy_depth 1
- GI_diffuse_samples 0
- GI_glossy_samples 0
- GI_refraction_samples 0
 }
 
 persp_camera
