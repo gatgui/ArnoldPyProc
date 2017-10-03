@@ -806,7 +806,7 @@ procedural_init
     #else
       procedural_path += ':';
     #endif
-    procedural_path = AiNodeGetStr(opts, "procedural_searchpath");
+    procedural_path += AiNodeGetStr(opts, "procedural_searchpath");
   }
 
   name = AiNodeGetStr(node, "name").c_str();
