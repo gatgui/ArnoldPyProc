@@ -6,6 +6,8 @@ from excons.tools import python
 
 env = excons.MakeBaseEnv()
 
+hardpylink = (excons.GetArgument("hard-py-link", 0, int) != 0)
+
 cppflags = ""
 if sys.platform != "win32":
     cppflags += " -Wno-unused-parameter"
@@ -19,7 +21,7 @@ prjs = [
    "ext": arnold.PluginExt(),
    "cppflags": cppflags,
    "srcs": ["src/main.cpp"],
-   "custom": [arnold.Require, python.SoftRequire]
+   "custom": [arnold.Require, (python.Require if hardpylink else python.SoftRequire)]
   }
 ]
 

@@ -2,6 +2,9 @@
 /debug/
 /.build/
 /eco/
+/test/*.dylib
+/test/*.dll
+/test/*.so
 *.dblite
 *.pyc
 *.exr
