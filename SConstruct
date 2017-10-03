@@ -10,9 +10,11 @@ cppflags = ""
 if sys.platform != "win32":
     cppflags += " -Wno-unused-parameter"
 
+verprefix = "/a%spy%s" % (arnold.Version(compat=True), python.Version())
+
 prjs = [
   {"name": "pyproc",
-   "prefix": "arnold",
+   "prefix": "arnold" + verprefix,
    "type": "dynamicmodule",
    "ext": arnold.PluginExt(),
    "cppflags": cppflags,
@@ -23,7 +25,7 @@ prjs = [
 
 excons.DeclareTargets(env, prjs)
 
-excons.EcosystemDist(env, "pyproc.env", {"pyproc": ""})
+excons.EcosystemDist(env, "pyproc.env", {"pyproc": verprefix})
 
 Default(["pyproc"])
 
