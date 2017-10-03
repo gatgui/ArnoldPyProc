@@ -20,6 +20,8 @@
 
 import arnold
 
+arnold5 = (int(arnold.AiGetVersion()[0]) >= 5)
+
 def Init(procName):
    proc = arnold.AiNodeLookUpByName(procName)
    if not proc:
@@ -45,8 +47,6 @@ def Init(procName):
             pval = arnold.AiNodeGetUInt(proc, pname)
          elif ptype == arnold.AI_TYPE_FLOAT:
             pval = arnold.AiNodeGetFlt(proc, pname)
-         elif ptype == arnold.AI_TYPE_VECTOR2:
-            pval = arnold.AiNodeGetPnt2(proc, pname)
          elif ptype == arnold.AI_TYPE_VECTOR:
             pval = arnold.AiNodeGetVec(proc, pname)
          elif ptype == arnold.AI_TYPE_RGB:
@@ -55,6 +55,14 @@ def Init(procName):
             pval = arnold.AiNodeGetRGBA(proc, pname)
          elif ptype == arnold.AI_TYPE_STRING:
             pval = arnold.AiNodeGetStr(proc, pname)
+         if arnold5:
+            if ptype == arnold.AI_TYPE_VECTOR2:
+               pval = arnold.AiNodeGetVec2(proc, pname)
+         else:
+            if ptype == arnold.AI_TYPE_POINT2:
+               pval = arnold.AiNodeGetPnt2(proc, pname)
+            elif ptype == arnold.AI_TYPE_POINT:
+               pval = arnold.AiNodeGetPnt(proc, pname)
          if pval != None:
             attrs[pname] = (ptype, pval)
          else:
@@ -94,8 +102,6 @@ def GetNode(user_data, i):
                arnold.AiNodeSetUInt(n, k, pval)
             elif ptype == arnold.AI_TYPE_FLOAT:
                arnold.AiNodeSetFlt(n, k, pval)
-            elif ptype == arnold.AI_TYPE_VECTOR2:
-               arnold.AiNodeSetPnt2(n, k, pval.x, pval.y)
             elif ptype == arnold.AI_TYPE_VECTOR:
                arnold.AiNodeSetVec(n, k, pval.x, pval.y, pval.z)
             elif ptype == arnold.AI_TYPE_RGB:
@@ -104,6 +110,15 @@ def GetNode(user_data, i):
                arnold.AiNodeSetRGBA(n, k, pval.r, pval.g, pval.b, pval.a)
             elif ptype == arnold.AI_TYPE_STRING:
                arnold.AiNodeSetStr(n, k, pval)
+            else:
+               if arnold5:
+                  if ptype == arnold.AI_TYPE_VECTOR2:
+                     arnold.AiNodeSetVec2(n, k, pval.x, pval.y)
+               else:
+                  if ptype == arnold.AI_TYPE_POINT2:
+                     arnold.AiNodeSetPnt2(n, k, pval.x, pval.y)
+                  elif ptype == arnold.AI_TYPE_POINT:
+                     arnold.AiNodeSetPnt(n, k, pval.x, pval.y, pval.z)
       return name
    else:
       return None
