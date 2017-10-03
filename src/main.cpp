@@ -28,16 +28,26 @@ SOFTWARE.
 #include <cstring>
 
 // ---
+
 #if AI_VERSION_ARCH_NUM < 5
-#define PROC_CLEAN_UP int PyDSOCleanup(void *user_ptr)
-#define PRO_NUM_NODE int PyDSONumNodes(void *user_ptr)
-#define PROC_GET_NODE AtNode* PyDSOGetNode(void *user_ptr, int i)
-#define ARNOLD_4
+# define PYPROC_CLEANUP   int PyDSOCleanup(void *user_ptr)
+# define PYPROC_NUM_NODES int PyDSONumNodes(void *user_ptr)
+# define PYPROC_GET_NODE  AtNode* PyDSOGetNode(void *user_ptr, int i)
+# define PYPROC_INIT      int PyDSOInit(AtNode *node, void **user_ptr)
 #else
-#define PROC_CLEAN_UP procedural_cleanup
-#define PRO_NUM_NODE procedural_num_nodes
-#define PROC_GET_NODE procedural_get_node
+# define PYPROC_CLEANUP   procedural_cleanup
+# define PYPROC_NUM_NODES procedural_num_nodes
+# define PYPROC_GET_NODE  procedural_get_node
+# define PYPROC_INIT      procedural_init
 #endif
+
+#ifdef _WIN32
+static const int gsPathSep = ';';
+#else
+static const int gsPathSep = ':';
+#endif
+
+// ---
 
 class PythonInterpreter
 {
@@ -65,12 +75,6 @@ private:
   
   static void PrintPath(const char *p)
   {
-#ifdef _WIN32
-    int sep = ';';
-#else
-    int sep = ':';
-#endif
-    
     if (!p)
     {
       return;
@@ -79,7 +83,7 @@ private:
     std::string tmp = p;
     
     size_t p0 = 0;
-    size_t p1 = tmp.find(sep, p0);
+    size_t p1 = tmp.find(gsPathSep, p0);
     
     while (p1 != std::string::npos)
     {
@@ -89,7 +93,7 @@ private:
         AiMsgInfo("[pyproc]   %s", path.c_str());
       }
       p0 = p1 + 1;
-      p1 = tmp.find(sep, p0);
+      p1 = tmp.find(gsPathSep, p0);
     }
     
     std::string path = tmp.substr(p0);
@@ -115,7 +119,7 @@ private:
       char *libpath = getenv("PATH");
 #else
 #  ifdef __APPLE__
-      // This is not DYLD_LIBRARY_PATH, on OSX Python is used as a framework
+      // Don't use DYLD_LIBRARY_PATH. On OSX, Python is used as a framework
       char *libpath = 0;
 #  else
       char *libpath = getenv("LD_LIBRARY_PATH");
@@ -595,17 +599,11 @@ private:
   
   bool findInPath(const std::string &procpath, const std::string &script, std::string &path)
   {
-#ifdef _WIN32
-    char sep = ';';
-#else
-    char sep = ':';
-#endif
-    
     struct stat st;
     bool found = false;
 
     size_t p0 = 0;
-    size_t p1 = procpath.find(sep, p0);
+    size_t p1 = procpath.find(gsPathSep, p0);
 
     while (!found && p1 != std::string::npos)
     {
@@ -626,7 +624,7 @@ private:
       }
       
       p0 = p1 + 1;
-      p1 = procpath.find(sep, p0);
+      p1 = procpath.find(gsPathSep, p0);
     }
     
     if (!found)
@@ -662,7 +660,8 @@ private:
 
 
 // ---
-PROC_CLEAN_UP
+
+PYPROC_CLEANUP
 {
   if (!Py_IsInitialized())
   {
@@ -678,8 +677,7 @@ PROC_CLEAN_UP
   return rv;
 }
 
-
-PRO_NUM_NODE
+PYPROC_NUM_NODES
 {
   if (!Py_IsInitialized())
   {
@@ -692,8 +690,7 @@ PRO_NUM_NODE
   return dso->numNodes();
 }
 
-
-PROC_GET_NODE
+PYPROC_GET_NODE
 {
   if (!Py_IsInitialized())
   {
@@ -706,14 +703,12 @@ PROC_GET_NODE
   return dso->getNode(i);
 }
 
-
-#ifdef ARNOLD_4
-int PyDSOInit(AtNode *node, void **user_ptr)
+PYPROC_INIT
 {
   std::string script;
   std::string name;
   std::string procedural_path;
-  bool verbose;
+  bool verbose = false;
 
   if (!Py_IsInitialized())
   {
@@ -729,27 +724,31 @@ int PyDSOInit(AtNode *node, void **user_ptr)
   }
   else
   {
-    procedural_path = AiNodeGetStr(opts, "procedural_searchpath");
+#if AI_VERSION_ARCH_NUM >= 5
+    procedural_path = AiNodeGetStr(opts, "plugin_searchpath");
+    procedural_path += gsPathSep;
+#endif
+    procedural_path += AiNodeGetStr(opts, "procedural_searchpath");
   }
 
+#if AI_VERSION_ARCH_NUM < 5
   name = AiNodeGetStr(node, "name");
   script = AiNodeGetStr(node, "data");
-
   if (AiNodeLookUpUserParameter(node, "verbose") != NULL)
   {
     verbose = AiNodeGetBool(node, "verbose");
   }
-  else
-  {
-    verbose = false;
-  }
+#else
+  name = AiNodeGetStr(node, "name").c_str();
+  script = AiNodeGetStr(node, "script").c_str();
+  verbose = AiNodeGetBool(node, "verbose");
+#endif
 
   PythonDso *dso = new PythonDso(name, script, procedural_path, verbose);
 
   if (dso->valid())
   {
     *user_ptr = (void*)dso;
-
     return dso->init();
   }
   else
@@ -757,6 +756,8 @@ int PyDSOInit(AtNode *node, void **user_ptr)
     return 0;
   }
 }
+
+#if AI_VERSION_ARCH_NUM < 5
 
 proc_loader
 {
@@ -767,61 +768,16 @@ proc_loader
   strcpy(vtable->version, AI_VERSION);
   return true;
 }
-#else
-struct PyProc
-{
-  AtString script;
-  bool verbose;
-};
 
+#else
 
 AI_PROCEDURAL_NODE_EXPORT_METHODS(PyProcMtd);
-
 
 node_parameters
 {
   AiParameterStr("script", "");
   AiParameterBool("verbose", false);
-}
-
-
-procedural_init
-{
-  std::string script;
-  std::string name;
-  std::string procedural_path;
-  bool verbose;
-
-  AtNode *opts = AiUniverseGetOptions();
-  if (!opts)
-  {
-    AiMsgWarning("[pyproc] No 'options' node");
-    return 0;
-  }
-  else
-  {
-    procedural_path = AiNodeGetStr(opts, "plugin_searchpath");
-    #ifdef _WIN32
-      procedural_path += ';';
-    #else
-      procedural_path += ':';
-    #endif
-    procedural_path += AiNodeGetStr(opts, "procedural_searchpath");
-  }
-
-  name = AiNodeGetStr(node, "name").c_str();
-  script = AiNodeGetStr(node, "script").c_str();
-  verbose = AiNodeGetBool(node, "verbose");
-
-  PythonDso *dso = new PythonDso(name, script, procedural_path, verbose);
-  *user_ptr = dso;
-
-  if (!dso->valid())
-  {
-    return 0;
-  }
-
-  return dso->init();
+  AiMetaDataSetBool(nentry, "script", "filepath", true);
 }
 
 node_loader
@@ -839,14 +795,14 @@ node_loader
 
   return true;
 }
-#endif // ARNOLD_4
+
+#endif
 
 // ---
 
 #ifdef _WIN32
-
-#  define WIN32_LEAN_AND_MEAN
-#  include <windows.h>
+# define WIN32_LEAN_AND_MEAN
+# include <windows.h>
 
 BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID reserved)
 {
